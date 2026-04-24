@@ -12,6 +12,8 @@
 #![no_std]
 use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String};
 
+pub mod secure;
+
 #[contracttype]
 pub enum DataKey {
     Admin,
@@ -54,38 +56,6 @@ impl ConfigContract {
 }
 
 // ---------------------------------------------------------------------------
-// Secure mirror
-// ---------------------------------------------------------------------------
-
-#[contract]
-pub struct SecureConfigContract;
-
-#[contractimpl]
-impl SecureConfigContract {
-    pub fn initialize(env: Env, admin: Address) {
-        if env.storage().persistent().has(&DataKey::Admin) {
-            panic!("already initialized");
-        }
-        env.storage().persistent().set(&DataKey::Admin, &admin);
-    }
-
-    /// SECURE: retrieves the stored `Address` and calls `require_auth()`,
-    /// which enforces a cryptographic signature check.
-    pub fn set_config(env: Env, new_value: u32) {
-        let admin: Address = env.storage().persistent().get(&DataKey::Admin).unwrap();
-        admin.require_auth();
-        env.storage().persistent().set(&DataKey::Config, &new_value);
-    }
-
-    pub fn get_config(env: Env) -> u32 {
-        env.storage()
-            .persistent()
-            .get(&DataKey::Config)
-            .unwrap_or(0)
-    }
-}
-
-// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -93,6 +63,7 @@ impl SecureConfigContract {
 mod tests {
     use super::*;
     use soroban_sdk::{testutils::Address as _, Address, Env, String};
+    use secure::SecureConfigContractClient;
 
     // --- Vulnerable contract tests ---
 
@@ -133,7 +104,7 @@ mod tests {
     fn test_secure_requires_address_auth() {
         let env = Env::default();
         env.mock_all_auths();
-        let id = env.register_contract(None, SecureConfigContract);
+        let id = env.register_contract(None, secure::SecureConfigContract);
         let client = SecureConfigContractClient::new(&env, &id);
 
         let admin = Address::generate(&env);
@@ -147,7 +118,7 @@ mod tests {
     fn test_secure_rejects_without_auth() {
         let env = Env::default();
         // Deliberately do NOT mock auths — the call must fail.
-        let id = env.register_contract(None, SecureConfigContract);
+        let id = env.register_contract(None, secure::SecureConfigContract);
         let client = SecureConfigContractClient::new(&env, &id);
 
         let admin = Address::generate(&env);
